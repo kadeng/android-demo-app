@@ -3,8 +3,9 @@ import torch
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Tokenizer
 from torch.utils.mobile_optimizer import optimize_for_mobile
 
-tokenizer = Wav2Vec2Tokenizer.from_pretrained("facebook/wav2vec2-base-960h")
-model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
+# See https://huggingface.co/models?filter=wav2vec2&p=4 for complete list
+tokenizer = Wav2Vec2Tokenizer.from_pretrained("facebook/wav2vec2-large-960h")
+model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-large-100k-voxpopuli")
 model.eval()
 
 audio_input, _ = sf.read("scent_of_a_woman_future.wav")

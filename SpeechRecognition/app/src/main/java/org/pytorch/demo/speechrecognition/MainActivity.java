@@ -11,6 +11,7 @@ import android.os.HandlerThread;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -25,6 +26,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
 import java.util.Map;
 
 
@@ -34,14 +36,17 @@ public class MainActivity extends AppCompatActivity implements Runnable {
     private Module mModuleEncoder;
     private TextView mTextView;
     private Button mButton;
+    private ArrayList<Word2VecRecognition> recognitionHistory = new ArrayList<>();
 
     private final static String[] tokens = {"<s>", "<pad>", "</s>", "<unk>", "|", "E", "T", "A", "O", "N", "I", "H", "S", "R", "D", "L", "U", "M", "W", "C", "F", "G", "Y", "P", "B", "V", "K", "'", "X", "J", "Q", "Z"};
+
     private final static int INPUT_SIZE = 65024;
     private final static int AUDIO_LEN_LIMIT = 6;
 
     private final static int REQUEST_RECORD_AUDIO = 13;
     private final static int SAMPLE_RATE = 16000;
     private final static int RECORDING_LENGTH = SAMPLE_RATE * AUDIO_LEN_LIMIT;
+
 
     private final static String LOG_TAG = MainActivity.class.getSimpleName();
 
@@ -60,6 +65,7 @@ public class MainActivity extends AppCompatActivity implements Runnable {
                     });
         }
     };
+    private EditText mHistoryText;
 
     @Override
     protected void onDestroy() {
@@ -87,6 +93,7 @@ public class MainActivity extends AppCompatActivity implements Runnable {
 
         mButton = findViewById(R.id.btnRecognize);
         mTextView = findViewById(R.id.tvResult);
+        this.mHistoryText = findViewById(R.id.historyText);
 
         mButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -137,6 +144,17 @@ public class MainActivity extends AppCompatActivity implements Runnable {
 
     private void showTranslationResult(String result) {
         mTextView.setText(result);
+        if (recognitionHistory.size()>0) {
+            Word2VecRecognition current = recognitionHistory.get(recognitionHistory.size() - 1);
+            StringBuilder sb = new StringBuilder();
+            for (int i=recognitionHistory.size()-1;i>=0;i--) {
+                Word2VecRecognition other = recognitionHistory.get(i);
+                double distance = current.distance(other);
+                sb.append(other.name + String.format(" <-> %.1f\n", distance) );
+            }
+            mHistoryText.setText(sb);
+
+        }
     }
 
     public void run() {
@@ -202,30 +220,37 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         }
 
         double wav2vecinput[] = new double[INPUT_SIZE];
-        for (int n = 0; n < INPUT_SIZE; n++)
+        for (int n = 0; n < INPUT_SIZE; n++) {
             wav2vecinput[n] = floatInputBuffer[n];
-
+        }
         FloatBuffer inTensorBuffer = Tensor.allocateFloatBuffer(INPUT_SIZE);
-        for (double val : wav2vecinput)
-            inTensorBuffer.put((float)val);
-
+        for (double val : wav2vecinput) {
+            inTensorBuffer.put((float) val);
+        }
         Tensor inTensor = Tensor.fromBlob(inTensorBuffer, new long[]{1, INPUT_SIZE});
 
         final Map<String, IValue> map = mModuleEncoder.forward(IValue.from(inTensor)).toDictStringKey();
         final Tensor logitsTensor = map.get("logits").toTensor();
+
         final float[] values = logitsTensor.getDataAsFloatArray();
 
-        String result = "";
+        StringBuffer result = new StringBuffer();
+
         float row[] = new float[tokens.length];
         for (int i = 0; i < values.length; i++) {
             row[i % tokens.length] = values[i];
             if (i > 0 && i % tokens.length == 0) {
                 int tid = argmax(row);
-                if (tid > 4) result = String.format("%s%s", result, tokens[tid]);
-                else if (tid == 4) result = String.format("%s ", result);
+                if (tid > 4) {
+                    result.append(tokens[tid]);
+                }
+                else if (tid == 4) {
+                    result.append(' ');
+                }
             }
         }
-        return result;
+        recognitionHistory.add(new Word2VecRecognition(values, tokens, result.toString()));
+        return result.toString();
     }
 
     private int argmax(float[] array) {
